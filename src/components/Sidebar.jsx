@@ -65,6 +65,24 @@ export default function Sidebar({ currentView, setCurrentView }) {
           <span className="font-mono text-label-md">Project Forge</span>
         </button>
 
+        {/* Workspace (Code Editor) */}
+        <button
+          onClick={() => setCurrentView('workspace')}
+          className={`w-full flex items-center gap-2 p-3 rounded transition-all active:scale-95 text-left ${
+            currentView === 'workspace'
+              ? 'border-l-4 border-primary bg-surface-container-high text-on-surface font-bold'
+              : 'text-on-surface-variant hover:bg-surface-container-low'
+          }`}
+        >
+          <span 
+            className="material-symbols-outlined" 
+            style={{ fontVariationSettings: currentView === 'workspace' ? "'FILL' 1" : "'FILL' 0" }}
+          >
+            code
+          </span>
+          <span className="font-mono text-label-md">Workspace</span>
+        </button>
+
         {/* AI Assistant indicator / helper link */}
         <button
           onClick={() => {

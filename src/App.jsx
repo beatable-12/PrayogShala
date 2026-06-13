@@ -4,6 +4,7 @@ import Header from './components/Header';
 import DashboardView from './views/DashboardView';
 import ConceptLabView from './views/ConceptLabView';
 import ProjectForgeView from './views/ProjectForgeView';
+import CodeWorkspaceView from './views/CodeWorkspaceView';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -18,10 +19,17 @@ export default function App() {
         return <ConceptLabView xp={xp} setXp={setXp} setCurrentView={setCurrentView} />;
       case 'forge':
         return <ProjectForgeView xp={xp} setXp={setXp} />;
+      case 'workspace':
+        return <CodeWorkspaceView />;
       default:
         return <DashboardView setCurrentView={setCurrentView} />;
     }
   };
+
+  // CodeWorkspaceView takes full screen
+  if (currentView === 'workspace') {
+    return <CodeWorkspaceView />;
+  }
 
   return (
     <div className="min-h-screen bg-background text-on-background font-sans flex overflow-hidden">
