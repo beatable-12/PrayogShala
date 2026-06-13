@@ -224,24 +224,3 @@ const startServer = async () => {
 startServer();
 
 export default app;
-
-// ============================================
-// SERVER START
-// ============================================
-
-const startServer = async () => {
-  try {
-    // Connect to MongoDB
-    await connectDB();
-
-    app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-  } catch (error) {
-    console.error(`❌ Server startup failed: ${error.message}`);
-    process.exit(1);
-  }
-};
-
-startServer();
