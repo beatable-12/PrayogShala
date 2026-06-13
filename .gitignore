@@ -1,0 +1,32 @@
+node_modules/
+/.pnp/
+.pnp.js
+
+# dotenv environment variables
+.env
+.env.local
+.env.*.local
+
+# build outputs
+/dist/
+/build/
+
+# Vite
+/node_modules/
+/dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+
+# Editor directories and files
+.idea/
+.vscode/
+
+# Misc
+.envrc
+.cache/

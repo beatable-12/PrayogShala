@@ -1,0 +1,78 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        "background": "#f5fafe",
+        "on-background": "#171c1f",
+        "surface": "#f5fafe",
+        "surface-dim": "#d5dbdf",
+        "surface-bright": "#f5fafe",
+        "surface-container-lowest": "#ffffff",
+        "surface-container-low": "#eff4f8",
+        "surface-container": "#e9eef2",
+        "surface-container-high": "#e4e9ed",
+        "surface-container-highest": "#dee3e7",
+        "on-surface": "#171c1f",
+        "on-surface-variant": "#5d3f3d",
+        "primary": "#bb0016",
+        "primary-container": "#e1272a",
+        "on-primary": "#ffffff",
+        "on-primary-container": "#fffbff",
+        "secondary": "#4c5e88",
+        "secondary-container": "#bcceff",
+        "on-secondary": "#ffffff",
+        "on-secondary-container": "#455781",
+        "on-secondary-fixed-variant": "#34466f",
+        "tertiary": "#4d5c77",
+        "tertiary-container": "#667591",
+        "on-tertiary": "#ffffff",
+        "on-tertiary-container": "#fefcff",
+        "outline": "#916f6b",
+        "outline-variant": "#e6bdb9",
+        "error": "#ba1a1a",
+        "error-container": "#ffdad6",
+        "on-error": "#ffffff",
+        "on-error-container": "#93000a",
+      },
+      borderRadius: {
+        DEFAULT: "0.125rem",
+        lg: "0.25rem",
+        xl: "0.5rem",
+        full: "9999px",
+      },
+      spacing: {
+        xs: "4px",
+        base: "8px",
+        sm: "12px",
+        md: "24px",
+        gutter: "24px",
+        lg: "40px",
+        xl: "64px",
+        margin: "32px",
+      },
+      fontFamily: {
+        sans: ["Inter", "sans-serif"],
+        headline: ["Hanken Grotesk", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"],
+      },
+      fontSize: {
+        "display-lg": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "700" }],
+        "headline-lg": ["32px", { lineHeight: "40px", fontWeight: "600" }],
+        "headline-md": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+        "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }],
+        "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+        "label-md": ["14px", { lineHeight: "20px", letterSpacing: "0.05em", fontWeight: "500" }],
+        "code-sm": ["13px", { lineHeight: "20px", fontWeight: "400" }],
+      }
+    },
+  },
+  plugins: [
+    import('@tailwindcss/forms'),
+    import('@tailwindcss/container-queries')
+  ],
+}
