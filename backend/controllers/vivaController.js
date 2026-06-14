@@ -1,194 +1,217 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import Viva from '../models/Viva.js';
-import Submission from '../models/Submission.js';
-import Topic from '../models/Topic.js';
-import { startViva, evaluateAnswer, generateFinalFeedback } from '../services/geminiService.js';
+import User from '../models/User.js';
+import * as vivaService from '../services/sarvamVivaService.js';
 
-/**
- * controllers/vivaController.js
- *
- * startVivaSession   → Creates a new Viva document, Gemini generates first question
- * submitAnswer       → Student submits answer, Gemini evaluates + gives next question
- * completeViva       → Finalizes the viva, Gemini writes overall feedback summary
- * getVivaById        → Fetch a viva session (for resume or review)
- * getUserVivas       → List all viva sessions for the current user
- */
+const TOTAL_QUESTIONS = 5;
 
-// @desc   Start a new AI Code-Aware Viva session
-// @route  POST /api/viva/start
-// @access Private
 export const startVivaSession = asyncHandler(async (req, res) => {
-  const { submissionId } = req.body;
+  const { submissionId, sourceCode, topicTitle, projectTitle, runtime, memory, status } = req.body;
 
-  const submission = await Submission.findOne({
-    _id: submissionId,
-    user: req.user._id,
-  }).populate('topic');
-
-  if (!submission) {
-    return errorResponse(res, 404, 'Submission not found.');
-  }
-  if (!submission.isAccepted) {
-    return errorResponse(res, 400, 'Only accepted submissions can proceed to a Viva.');
+  if (!sourceCode || !topicTitle) {
+    return errorResponse(res, 400, 'sourceCode and topicTitle are required.');
   }
 
-  // Check for an existing in-progress viva for this submission
-  const existingViva = await Viva.findOne({
-    submission: submissionId,
-    user: req.user._id,
-    status: 'in_progress',
-  });
-  if (existingViva) {
-    return successResponse(res, 200, 'Resumed existing viva session.', { viva: existingViva });
-  }
-
-  // Ask Gemini to generate the first question based on the student's code
-  const geminiResponse = await startViva(
-    submission.code,
-    submission.topic.title,
-    req.user.preferredLang
+  const analysis = await vivaService.analyzeCode(
+    sourceCode, topicTitle, runtime || 0, memory || 0, status || 'accepted'
   );
 
-  const firstQuestion = geminiResponse.question || 'Explain the core logic of your solution.';
+  const firstQuestion = await vivaService.generateQuestion(analysis, [], 1);
 
   const viva = await Viva.create({
-    user: req.user._id,
-    submission: submissionId,
-    topic: submission.topic._id,
-    messages: [{ role: 'gemini', content: firstQuestion }],
+    userId: req.user._id,
+    submissionId: submissionId || null,
+    topicId: null,
+    codeAnalysis: {
+      algorithmsUsed: analysis.algorithmsUsed,
+      dataStructuresUsed: analysis.dataStructuresUsed,
+      optimizations: analysis.optimizations,
+      timeComplexity: analysis.timeComplexity,
+      spaceComplexity: analysis.spaceComplexity,
+      weaknesses: analysis.weaknesses,
+      suggestions: analysis.suggestions,
+    },
+    executionContext: {
+      runtime: runtime || 0,
+      memory: memory || 0,
+      status: status || 'accepted',
+    },
+    messages: [{
+      role: 'sarvam',
+      content: firstQuestion.question,
+      category: firstQuestion.category,
+      difficulty: firstQuestion.difficulty,
+    }],
     status: 'in_progress',
   });
 
   return successResponse(res, 201, 'Viva session started.', {
-    viva,
-    currentQuestion: firstQuestion,
+    vivaSessionId: viva._id,
+    firstQuestion: {
+      id: firstQuestion.id,
+      order: 1,
+      question: firstQuestion.question,
+      category: firstQuestion.category,
+      difficulty: firstQuestion.difficulty,
+    },
+    codeAnalysis: analysis,
+    totalQuestions: TOTAL_QUESTIONS,
+    currentQuestion: 1,
   });
 });
 
-// @desc   Submit an answer to the current viva question
-// @route  POST /api/viva/:id/answer
-// @access Private
 export const submitAnswer = asyncHandler(async (req, res) => {
   const { answer } = req.body;
   if (!answer?.trim()) return errorResponse(res, 400, 'Answer cannot be empty.');
 
-  const viva = await Viva.findOne({ _id: req.params.id, user: req.user._id });
+  const viva = await Viva.findOne({ _id: req.params.id, userId: req.user._id });
   if (!viva) return errorResponse(res, 404, 'Viva session not found.');
-  if (viva.status !== 'in_progress') {
-    return errorResponse(res, 400, 'This viva session is already completed.');
-  }
+  if (viva.status !== 'in_progress') return errorResponse(res, 400, 'Viva is already completed.');
 
-  const submission = await Submission.findById(viva.submission);
-  const topic = await Topic.findById(viva.topic);
+  const lastQuestion = [...viva.messages].reverse().find(m => m.role === 'sarvam');
+  if (!lastQuestion) return errorResponse(res, 400, 'No active question found.');
 
-  // Get the last question that Gemini asked
-  const lastGeminiMsg = [...viva.messages].reverse().find((m) => m.role === 'gemini');
-  if (!lastGeminiMsg) return errorResponse(res, 400, 'No question found to answer.');
-
-  // Gemini evaluates the answer
-  const evaluation = await evaluateAnswer(
-    submission.code,
-    lastGeminiMsg.content,
+  const evaluation = await vivaService.evaluateAnswer(
+    lastQuestion.content,
     answer,
-    topic.title
+    [],
+    viva.codeAnalysis
   );
 
-  const score = evaluation.score ?? 5;
-  const feedback = evaluation.feedback ?? 'Answer recorded.';
-  const nextQuestion = evaluation.nextQuestion ?? null;
+  viva.messages.push({
+    role: 'student',
+    content: answer,
+    score: evaluation.score,
+  });
 
-  // Record student's answer with its score
-  viva.messages.push({ role: 'student', content: answer, score });
+  const answeredCount = viva.messages.filter(m => m.role === 'student').length;
+  const nextLevel = answeredCount + 1;
+  let nextQuestion = null;
 
-  // If Gemini provided a follow-up question, add it
-  if (nextQuestion) {
-    viva.messages.push({ role: 'gemini', content: nextQuestion });
+  if (nextLevel <= TOTAL_QUESTIONS) {
+    nextQuestion = await vivaService.generateQuestion(viva.codeAnalysis, viva.messages, nextLevel);
+    viva.messages.push({
+      role: 'sarvam',
+      content: nextQuestion.question,
+      category: nextQuestion.category,
+      difficulty: nextQuestion.difficulty,
+    });
   }
 
-  // If no next question — auto-complete after max 3 rounds (6 messages = 3 Q&A pairs)
-  const studentAnswerCount = viva.messages.filter((m) => m.role === 'student').length;
-  const shouldComplete = !nextQuestion || studentAnswerCount >= 3;
+  if (!nextQuestion || answeredCount >= TOTAL_QUESTIONS) {
+    const scores = viva.messages.filter(m => m.role === 'student' && m.score != null).map(m => m.score);
+    viva.totalScore = scores.length > 0
+      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10)
+      : 0;
 
-  if (shouldComplete) {
-    // Compute total score from all student answers
-    const answerScores = viva.messages
-      .filter((m) => m.role === 'student' && m.score !== null)
-      .map((m) => m.score);
-    const avgScore = answerScores.length
-      ? Math.round((answerScores.reduce((a, b) => a + b, 0) / answerScores.length) * 10)
-      : 50;
+    const conceptScore = Math.round((evaluation.conceptScore || evaluation.score) * 2.5);
+    const codeScore = Math.round((evaluation.codeKnowledgeScore || evaluation.score) * 2.5);
+    const optScore = Math.round((evaluation.optimizationScore || evaluation.score) * 2.5);
+    const psScore = Math.round((evaluation.problemSolvingScore || evaluation.score) * 2.5);
 
-    // Get Gemini's overall performance summary
-    const finalFeedback = await generateFinalFeedback(viva.messages, topic.title);
-
-    viva.totalScore = avgScore;
-    viva.feedback = finalFeedback.summary || feedback;
+    viva.feedback = JSON.stringify({
+      overallScore: Math.min(100, conceptScore + codeScore + optScore + psScore),
+      conceptUnderstanding: conceptScore,
+      codeKnowledge: codeScore,
+      optimizationAwareness: optScore,
+      problemSolving: psScore,
+    });
     viva.status = 'completed';
   }
 
   await viva.save();
 
-  return successResponse(
-    res,
-    200,
-    shouldComplete ? 'Viva completed!' : 'Answer submitted.',
-    {
-      viva,
-      answerFeedback: feedback,
-      answerScore: score,
-      nextQuestion: shouldComplete ? null : nextQuestion,
-      isCompleted: shouldComplete,
-    }
-  );
+  return successResponse(res, 200, nextQuestion ? 'Answer submitted.' : 'Viva completed!', {
+    answerScore: evaluation.score,
+    answerFeedback: evaluation.feedback,
+    keyPointsCovered: evaluation.keyPointsCovered || [],
+    keyPointsMissed: evaluation.keyPointsMissed || [],
+    nextQuestion: nextQuestion ? {
+      id: nextQuestion.id,
+      order: nextQuestion.order,
+      question: nextQuestion.question,
+      category: nextQuestion.category,
+      difficulty: nextQuestion.difficulty,
+    } : null,
+    isCompleted: viva.status === 'completed',
+    progress: {
+      current: answeredCount,
+      total: TOTAL_QUESTIONS,
+    },
+    finalScore: viva.status === 'completed' ? viva.totalScore : null,
+  });
 });
 
-// @desc   Manually complete/abandon a viva session
-// @route  PATCH /api/viva/:id/complete
-// @access Private
 export const completeViva = asyncHandler(async (req, res) => {
-  const viva = await Viva.findOne({ _id: req.params.id, user: req.user._id });
+  const viva = await Viva.findOne({ _id: req.params.id, userId: req.user._id });
   if (!viva) return errorResponse(res, 404, 'Viva session not found.');
+  if (viva.status !== 'in_progress') return errorResponse(res, 400, 'Viva is already completed.');
 
-  const topic = await Topic.findById(viva.topic);
-  const finalFeedback = await generateFinalFeedback(viva.messages, topic.title);
-
-  const answerScores = viva.messages
-    .filter((m) => m.role === 'student' && m.score !== null)
-    .map((m) => m.score);
-
-  viva.totalScore = answerScores.length
-    ? Math.round((answerScores.reduce((a, b) => a + b, 0) / answerScores.length) * 10)
+  const scores = viva.messages.filter(m => m.role === 'student' && m.score != null).map(m => m.score);
+  viva.totalScore = scores.length > 0
+    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10)
     : 0;
-  viva.feedback = finalFeedback.summary || 'Viva completed.';
+
+  const feedback = await vivaService.generateFeedback(viva.messages, viva.codeAnalysis);
+  viva.feedback = feedback.summary;
   viva.status = 'completed';
   await viva.save();
 
-  return successResponse(res, 200, 'Viva finalized.', { viva });
+  // Update user profile
+  await User.findByIdAndUpdate(req.user._id, {
+    $inc: { xp: viva.totalScore * 5 },
+  });
+
+  return successResponse(res, 200, 'Viva completed.', {
+    totalScore: viva.totalScore,
+    feedback,
+    codeAnalysis: viva.codeAnalysis,
+  });
 });
 
-// @desc   Get a specific viva session
-// @route  GET /api/viva/:id
-// @access Private
-export const getVivaById = asyncHandler(async (req, res) => {
-  const viva = await Viva.findOne({ _id: req.params.id, user: req.user._id })
-    .populate('topic', 'title slug difficulty')
-    .populate('submission', 'code language status score');
+export const getVivaResult = asyncHandler(async (req, res) => {
+  const viva = await Viva.findOne({ _id: req.params.id, userId: req.user._id });
+  if (!viva) return errorResponse(res, 404, 'Viva session not found.');
 
+  const questions = viva.messages.filter(m => m.role === 'sarvam');
+  const answers = viva.messages.filter(m => m.role === 'student');
+
+  let scoreBreakdown = {};
+  try {
+    scoreBreakdown = JSON.parse(viva.feedback || '{}');
+  } catch { /* ignore */ }
+
+  return successResponse(res, 200, 'Viva result retrieved.', {
+    viva: {
+      _id: viva._id,
+      status: viva.status,
+      totalScore: viva.totalScore,
+      isPassed: viva.isPassed,
+      codeAnalysis: viva.codeAnalysis,
+      executionContext: viva.executionContext,
+      questions,
+      answers,
+      scoreBreakdown: {
+        overallScore: scoreBreakdown.overallScore || viva.totalScore,
+        conceptUnderstanding: scoreBreakdown.conceptUnderstanding || Math.round(viva.totalScore * 0.25),
+        codeKnowledge: scoreBreakdown.codeKnowledge || Math.round(viva.totalScore * 0.25),
+        optimizationAwareness: scoreBreakdown.optimizationAwareness || Math.round(viva.totalScore * 0.25),
+        problemSolving: scoreBreakdown.problemSolving || Math.round(viva.totalScore * 0.25),
+      },
+      createdAt: viva.createdAt,
+      completedAt: viva.updatedAt,
+    },
+  });
+});
+
+export const getVivaById = asyncHandler(async (req, res) => {
+  const viva = await Viva.findOne({ _id: req.params.id, userId: req.user._id });
   if (!viva) return errorResponse(res, 404, 'Viva session not found.');
   return successResponse(res, 200, 'Viva retrieved.', { viva });
 });
 
-// @desc   List all viva sessions for current user
-// @route  GET /api/viva
-// @access Private
 export const getUserVivas = asyncHandler(async (req, res) => {
-  const vivas = await Viva.find({ user: req.user._id })
-    .populate('topic', 'title slug')
-    .sort({ createdAt: -1 });
-
-  return successResponse(res, 200, 'Viva sessions retrieved.', {
-    count: vivas.length,
-    vivas,
-  });
+  const vivas = await Viva.find({ userId: req.user._id }).sort({ createdAt: -1 });
+  return successResponse(res, 200, 'Viva sessions retrieved.', { count: vivas.length, vivas });
 });

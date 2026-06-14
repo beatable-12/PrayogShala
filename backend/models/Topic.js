@@ -1,30 +1,9 @@
 import mongoose from 'mongoose';
 
-/**
- * models/Topic.js
- *
- * A Topic is a single learnable unit (e.g., "Two Pointers").
- * It contains:
- *  - The concept explanation text (used by Sarvam AI for translation)
- *  - A validation quiz question (MCQ or code-fill)
- *  - A linked project to unlock upon passing validation
- *  - XP reward for completion
- *
- * Fields:
- *  - module          : Parent Module reference
- *  - title           : Display name (e.g., "Two Pointers")
- *  - slug            : URL-friendly identifier
- *  - conceptText     : English explanation passed to Sarvam for translation
- *  - difficulty      : EASY / MEDIUM / HARD badge
- *  - xpReward        : XP granted when topic is completed
- *  - validationQuiz  : Embedded quiz document for concept checking
- *  - projectTemplate : Starter code and tasks for Project Forge
- *  - order           : Display order within the parent module
- */
 const validationQuizSchema = new mongoose.Schema(
   {
     question: { type: String, required: true },
-    options: [{ type: String }], // For MCQ — empty for code-fill types
+    options: [{ type: String }],
     correctAnswer: { type: String, required: true },
     explanation: { type: String },
     type: {
@@ -40,7 +19,7 @@ const projectTemplateSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     description: { type: String },
-    starterCode: { type: String, default: '' }, // Pre-filled code for Monaco Editor
+    starterCode: { type: String, default: '' },
     language: {
       type: String,
       enum: ['python', 'javascript', 'java', 'cpp'],
@@ -113,6 +92,9 @@ const topicSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+topicSchema.index({ module: 1, order: 1 });
+topicSchema.index({ isPublished: 1, module: 1, order: 1 });
 
 const Topic = mongoose.model('Topic', topicSchema);
 export default Topic;

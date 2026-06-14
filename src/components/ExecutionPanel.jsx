@@ -42,24 +42,7 @@ export default function ExecutionPanel({
     </TabsTrigger>
   );
 
-  const MockResults = {
-    status: 'accepted',
-    stdout: 'Output from your program\n',
-    stderr: '',
-    executionTime: 45,
-    memoryUsed: 8,
-    testsPassed: 5,
-    testsTotal: 5,
-    testCases: [
-      { input: '[1, 2, 3]', output: '[1, 2, 3]', passed: true },
-      { input: '[3, 2, 1]', output: '[3, 2, 1]', passed: true },
-      { input: '[]', output: '[]', passed: true },
-      { input: '[1]', output: '[1]', passed: true },
-      { input: '[-1, 0, 1]', output: '[-1, 0, 1]', passed: true },
-    ],
-  };
-
-  const results = executionResult || MockResults;
+  const results = executionResult;
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
@@ -99,7 +82,7 @@ export default function ExecutionPanel({
 
         {/* Tests Tab */}
         <TabsContent value="tests" className={`h-full overflow-auto p-4 space-y-3 ${isDarkTheme ? 'bg-slate-950' : 'bg-white'}`}>
-          {results.testCases ? (
+          {results?.testCases ? (
             <>
               <div className={`p-3 rounded-lg ${results.testsPassed === results.testsTotal ? 'bg-green-900 text-green-100' : 'bg-yellow-900 text-yellow-100'}`}>
                 <p className="font-semibold">
@@ -144,7 +127,7 @@ export default function ExecutionPanel({
 
         {/* Results Tab */}
         <TabsContent value="results" className={`h-full overflow-auto p-4 ${isDarkTheme ? 'bg-slate-950' : 'bg-white'}`}>
-          {executionResult ? (
+          {results ? (
             <div className="space-y-4">
               {/* Status */}
               <div className={`p-4 rounded-lg ${

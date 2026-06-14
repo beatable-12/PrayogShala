@@ -1,29 +1,5 @@
 import mongoose from 'mongoose';
 
-/**
- * models/Submission.js
- *
- * Records every code submission a student makes in the Monaco Editor.
- * Stores Judge0 execution results and auto-grading scores.
- *
- * Fields:
- *  - user          : Student who submitted
- *  - topic         : Which topic this submission belongs to
- *  - code          : The raw source code submitted
- *  - language      : Programming language (maps to Judge0 language IDs)
- *  - judge0Token   : Token returned by Judge0 for async polling
- *  - status        : Current execution status
- *  - stdout        : Standard output from program execution
- *  - stderr        : Standard error / compilation errors
- *  - executionTime : Time taken in milliseconds
- *  - memoryUsed    : Memory used in KB
- *  - testsPassed   : Number of test cases passed
- *  - testsTotal    : Total number of test cases run
- *  - score         : Auto-computed percentage score
- *  - isAccepted    : True when all required test cases pass
- */
-
-// Maps language name to Judge0 language_id
 export const LANGUAGE_IDS = {
   python: 71,
   javascript: 63,
@@ -33,19 +9,25 @@ export const LANGUAGE_IDS = {
 
 const submissionSchema = new mongoose.Schema(
   {
-    user: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
-    topic: {
+    topicId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Topic',
       required: true,
     },
-    code: {
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      default: null,
+    },
+    sourceCode: {
       type: String,
-      required: [true, 'Submitted code is required'],
+      required: [true, 'Source code is required'],
+      maxlength: [131072, 'Source code cannot exceed 128 KB'],
     },
     language: {
       type: String,
@@ -72,8 +54,9 @@ const submissionSchema = new mongoose.Schema(
     },
     stdout: { type: String, default: '' },
     stderr: { type: String, default: '' },
-    executionTime: { type: Number, default: 0 }, // milliseconds
-    memoryUsed: { type: Number, default: 0 },     // KB
+    compileOutput: { type: String, default: '' },
+    executionTime: { type: Number, default: 0 },
+    memoryUsed: { type: Number, default: 0 },
     testsPassed: { type: Number, default: 0 },
     testsTotal: { type: Number, default: 0 },
     score: { type: Number, default: 0, min: 0, max: 100 },
@@ -82,7 +65,11 @@ const submissionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-compute score before saving
+submissionSchema.index({ userId: 1, topicId: 1, createdAt: -1 });
+submissionSchema.index({ projectId: 1, createdAt: -1 });
+submissionSchema.index({ status: 1, createdAt: -1 });
+submissionSchema.index({ judge0Token: 1 });
+
 submissionSchema.pre('save', function (next) {
   if (this.testsTotal > 0) {
     this.score = Math.round((this.testsPassed / this.testsTotal) * 100);

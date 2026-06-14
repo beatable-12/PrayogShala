@@ -1,19 +1,5 @@
 import mongoose from 'mongoose';
 
-/**
- * models/Module.js
- *
- * A Module is a high-level learning category (e.g., "Arrays & Hashing").
- * It groups multiple Topics under a single curriculum chapter.
- *
- * Fields:
- *  - title       : Display name (e.g., "Arrays & Hashing")
- *  - description : Short curriculum summary
- *  - order       : Integer defining the sidebar display sequence
- *  - icon        : Material Symbol icon name for the UI
- *  - topics      : References to all Topic documents belonging to this module
- *  - isPublished : Hides draft modules from students
- */
 const moduleSchema = new mongoose.Schema(
   {
     title: {
@@ -57,6 +43,9 @@ const moduleSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+moduleSchema.index({ order: 1 });
+moduleSchema.index({ isPublished: 1, order: 1 });
 
 const Module = mongoose.model('Module', moduleSchema);
 export default Module;

@@ -13,35 +13,12 @@
 
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, CheckCircle2, Circle, BookOpen, Flag, Award, ClipboardList } from 'lucide-react';
+import { MOCK_PROJECT_PANEL } from '../mock/projectPanel';
 
 export default function ProjectPanel({ isDarkTheme }) {
   const [expandedSection, setExpandedSection] = useState('objectives');
 
-  // Mock data - replace with real data from props
-  const project = {
-    title: 'Two Pointers Technique',
-    description: 'Master the two pointers technique to solve array problems efficiently.',
-    difficulty: 'MEDIUM',
-    xpReward: 250,
-    objectives: [
-      'Understand the two pointers concept',
-      'Apply two pointers to solve array problems',
-      'Optimize time complexity from O(n²) to O(n)',
-      'Handle edge cases and boundary conditions',
-    ],
-    milestones: [
-      { id: 1, title: 'Learn Concept', completed: true },
-      { id: 2, title: 'Validation Quiz', completed: true },
-      { id: 3, title: 'Implement Solution', completed: false },
-      { id: 4, title: 'Pass All Tests', completed: false },
-    ],
-    requirements: [
-      'Write a solution using two pointers',
-      'Pass all 5 test cases',
-      'Time complexity: O(n)',
-      'Space complexity: O(1)',
-    ],
-  };
+  const project = MOCK_PROJECT_PANEL;
 
   const toggleSection = (section) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -153,10 +130,10 @@ export default function ProjectPanel({ isDarkTheme }) {
       <div className={`border-t p-4 space-y-2 ${isDarkTheme ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'}`}>
         <div className="flex justify-between text-xs">
           <span className={isDarkTheme ? 'text-slate-400' : 'text-slate-600'}>Estimated Time</span>
-          <span className="font-medium">15 minutes</span>
+          <span className="font-medium">{project.estimatedMinutes}</span>
         </div>
         <div className="w-full bg-slate-700 rounded-full h-2">
-          <div className="bg-blue-500 h-2 rounded-full" style={{ width: '50%' }} />
+          <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${project.progressPercent}%` }} />
         </div>
       </div>
     </div>

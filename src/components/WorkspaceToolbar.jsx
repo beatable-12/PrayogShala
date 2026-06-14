@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Play, Send, Eye, EyeOff, Sun, Moon, Settings } from 'lucide-react';
+import { Play, Send, Eye, Sun, Moon, ArrowLeft } from 'lucide-react';
 
 export default function WorkspaceToolbar({
   language,
@@ -15,13 +15,27 @@ export default function WorkspaceToolbar({
   onSubmit,
   isExecuting,
   onToggleRightPanel,
+  onBack,
 }) {
   const languages = ['python', 'javascript', 'java', 'cpp', 'c'];
 
   return (
     <div className={`flex items-center justify-between px-4 py-3 border-b ${isDarkTheme ? 'border-slate-700 bg-slate-900' : 'border-slate-200 bg-slate-100'}`}>
-      {/* Left: Language Selector */}
+      {/* Left: Back Button + Language Selector */}
       <div className="flex items-center gap-4">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className={`p-2 rounded transition-colors ${
+              isDarkTheme
+                ? 'hover:bg-slate-700 text-slate-300'
+                : 'hover:bg-slate-200 text-slate-600'
+            }`}
+            title="Back to dashboard"
+          >
+            <ArrowLeft size={18} />
+          </button>
+        )}
         <select
           value={language}
           onChange={(e) => onLanguageChange(e.target.value)}

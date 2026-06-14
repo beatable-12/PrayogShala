@@ -1,18 +1,4 @@
-/**
- * src/components/MonacoEditorPanel.jsx
- * Monaco Editor integration with syntax highlighting and code completion
- * 
- * Features:
- * - Multiple language support
- * - Theme switching (dark/light)
- * - Code folding
- * - Minimap
- * - Line numbers
- * - Bracket matching
- * - Auto-formatting
- */
-
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import Editor from '@monaco-editor/react';
 
 export default function MonacoEditorPanel({
@@ -20,19 +6,8 @@ export default function MonacoEditorPanel({
   onCodeChange,
   language,
   isDarkTheme,
+  onExecute,
 }) {
-  const editorRef = useRef(null);
-
-  const handleEditorMount = (editor) => {
-    editorRef.current = editor;
-  };
-
-  const handleChange = (value) => {
-    if (value !== undefined) {
-      onCodeChange(value);
-    }
-  };
-
   const languageMap = {
     python: 'python',
     javascript: 'javascript',
@@ -41,16 +16,28 @@ export default function MonacoEditorPanel({
     c: 'c',
   };
 
-  const editorTheme = isDarkTheme ? 'vs-dark' : 'vs-light';
+  const handleEditorMount = (editor, monaco) => {
+    editor.focus();
+    editor.addAction({
+      id: 'execute-code',
+      label: 'Execute Code',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => {
+        if (onExecute) onExecute();
+      },
+    });
+  };
 
   return (
-    <div className="flex-1 overflow-hidden">
+    <div className="h-full w-full overflow-hidden">
       <Editor
         onMount={handleEditorMount}
         value={code}
-        onChange={handleChange}
+        onChange={(value) => {
+          if (value !== undefined) onCodeChange(value);
+        }}
         language={languageMap[language] || 'python'}
-        theme={editorTheme}
+        theme={isDarkTheme ? 'vs-dark' : 'vs-light'}
         options={{
           minimap: { enabled: true },
           fontSize: 14,
@@ -58,16 +45,13 @@ export default function MonacoEditorPanel({
           scrollBeyondLastLine: false,
           smoothScrolling: true,
           cursorStyle: 'line',
-          rulers: [80, 120],
           bracketPairColorization: { enabled: true },
-          'bracketPairColorization.independentColorPoolPerBracketType': true,
           wordWrap: 'on',
           formatOnPaste: true,
           formatOnType: true,
           autoClosingBrackets: 'always',
           autoClosingQuotes: 'always',
           autoIndent: 'smart',
-          suggestOnTriggerCharacters: true,
           tabSize: 2,
           insertSpaces: true,
           padding: { top: 16, bottom: 16 },

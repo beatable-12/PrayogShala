@@ -37,8 +37,14 @@ export const getModuleById = asyncHandler(async (req, res) => {
 // @desc   Create a new module
 // @route  POST /api/modules
 // @access Private/Admin
+const MODULE_ALLOWED = ['title', 'description', 'order', 'icon', 'totalLessons', 'estimatedHours', 'topics', 'isPublished'];
+
 export const createModule = asyncHandler(async (req, res) => {
-  const module = await Module.create(req.body);
+  const filtered = {};
+  for (const key of MODULE_ALLOWED) {
+    if (req.body[key] !== undefined) filtered[key] = req.body[key];
+  }
+  const module = await Module.create(filtered);
   return successResponse(res, 201, 'Module created.', { module });
 });
 
@@ -46,7 +52,11 @@ export const createModule = asyncHandler(async (req, res) => {
 // @route  PUT /api/modules/:id
 // @access Private/Admin
 export const updateModule = asyncHandler(async (req, res) => {
-  const module = await Module.findByIdAndUpdate(req.params.id, req.body, {
+  const filtered = {};
+  for (const key of MODULE_ALLOWED) {
+    if (req.body[key] !== undefined) filtered[key] = req.body[key];
+  }
+  const module = await Module.findByIdAndUpdate(req.params.id, filtered, {
     new: true,
     runValidators: true,
   });

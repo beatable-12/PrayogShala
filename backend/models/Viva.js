@@ -1,27 +1,10 @@
 import mongoose from 'mongoose';
 
-/**
- * models/Viva.js
- *
- * Stores a complete AI Code-Aware Viva Voce session.
- * Gemini reads the student's submitted code and generates contextual questions.
- * Student answers are evaluated and graded by Gemini.
- *
- * Fields:
- *  - user       : Student taking the viva
- *  - submission : The code submission being evaluated
- *  - topic      : Topic this viva is for
- *  - messages   : Ordered array of question/answer exchanges
- *  - totalScore : Final aggregated score (0–100)
- *  - feedback   : Gemini's overall assessment paragraph
- *  - status     : 'in_progress' until all questions answered, then 'completed'
- *  - isPassed   : True if totalScore >= passingThreshold (default 60)
- */
 const messageSchema = new mongoose.Schema(
   {
     role: {
       type: String,
-      enum: ['gemini', 'student'],
+      enum: ['sarvam', 'student'],
       required: true,
     },
     content: {
@@ -29,7 +12,19 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
     score: {
-      type: Number, // Score for this individual answer (0–10), null for gemini messages
+      type: Number,
+      default: null,
+      min: 0,
+      max: 10,
+    },
+    category: {
+      type: String,
+      enum: ['concept', 'implementation', 'optimization', 'edge_cases'],
+      default: null,
+    },
+    difficulty: {
+      type: String,
+      enum: ['easy', 'medium', 'hard'],
       default: null,
     },
     timestamp: {
@@ -42,20 +37,34 @@ const messageSchema = new mongoose.Schema(
 
 const vivaSchema = new mongoose.Schema(
   {
-    user: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
-    submission: {
+    submissionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Submission',
-      required: true,
+      default: null,
     },
-    topic: {
+    topicId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Topic',
-      required: true,
+      default: null,
+    },
+    codeAnalysis: {
+      algorithmsUsed: [String],
+      dataStructuresUsed: [String],
+      optimizations: [String],
+      timeComplexity: { type: String, default: '' },
+      spaceComplexity: { type: String, default: '' },
+      weaknesses: [String],
+      suggestions: [String],
+    },
+    executionContext: {
+      runtime: { type: Number, default: 0 },
+      memory: { type: Number, default: 0 },
+      status: { type: String, default: '' },
     },
     messages: [messageSchema],
     totalScore: {
@@ -85,7 +94,10 @@ const vivaSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Set isPassed based on totalScore before saving
+vivaSchema.index({ userId: 1, status: 1, createdAt: -1 });
+vivaSchema.index({ userId: 1, submissionId: 1 }, { unique: true, sparse: true });
+vivaSchema.index({ status: 1, createdAt: -1 });
+
 vivaSchema.pre('save', function (next) {
   if (this.status === 'completed') {
     this.isPassed = this.totalScore >= this.passingThreshold;

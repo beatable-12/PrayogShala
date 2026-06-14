@@ -18,6 +18,7 @@ import {
   login,
   getMe,
   updateMe,
+  logout,
 } from './controllers/authController.js';
 import {
   getAllModules,
@@ -37,31 +38,72 @@ import {
   deleteTopic,
 } from './controllers/topicController.js';
 import {
-  submitCodeHandler,
-  getSubmissions,
+  createSubmission,
   getSubmissionById,
-  pollSubmission,
+  getUserSubmissions,
 } from './controllers/submissionController.js';
+import {
+  execute,
+  getResult,
+} from './controllers/executionController.js';
+import {
+  explain,
+  mentorExplain,
+  mentorApproach,
+  mentorComplexity,
+  mentorHint,
+  mentorDebug,
+  mentorReview,
+  mentorViva,
+  textToSpeech,
+} from './controllers/sarvamController.js';
+import {
+  getProjectByTopic,
+  getProjectByIndex,
+  getAllBankProjects,
+  unlockProject,
+  completeMilestone,
+  completeProject,
+  getProjectProgress,
+} from './controllers/projectController.js';
+import { generateMilestones } from './controllers/milestoneController.js';
 import {
   startVivaSession,
   submitAnswer,
   completeViva,
   getVivaById,
+  getVivaResult,
   getUserVivas,
 } from './controllers/vivaController.js';
 import {
   generateReport,
   getReportById,
+  getSkillReport,
   getUserReports,
   verifyReport,
   getAllReports,
 } from './controllers/skillReportController.js';
 
+// TODO: Implement AI controllers — see aiController.js for contract definitions
+// import {
+//   explainConcept,
+//   generateHint,
+//   reviewCode,
+//   analyzeCode,
+//   generateVivaQuestion,
+//   evaluateVivaAnswer,
+//   translateContent,
+//   textToSpeech,
+//   detectLanguage,
+//   generateProject,
+//   generateMilestones,
+// } from './controllers/aiController.js';
+
 // Load environment variables
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const DEFAULT_PORT = Number.parseInt(process.env.PORT || '5000', 10);
 
 // ============================================
 // MIDDLEWARE - SECURITY & PARSING
@@ -84,12 +126,37 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(morgan('combined'));
 
 // Rate limiting
-const limiter = rateLimit({
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
   message: 'Too many requests from this IP, please try again later.',
 });
-app.use('/api/', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: 'Too many authentication attempts, please try again later.',
+});
+
+const executionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: 'Too many code executions, please wait a moment.',
+});
+
+const vivaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: 'Too many viva requests, please wait a moment.',
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: 'Too many AI requests, please wait a moment.',
+});
+
+app.use('/api/', globalLimiter);
 
 // ============================================
 // HEALTH CHECK
@@ -109,10 +176,11 @@ app.get('/api/health', (req, res) => {
 
 app.post(
   '/api/auth/register',
+  authLimiter,
   [
     body('name').trim().notEmpty().isLength({ min: 2, max: 50 }),
     body('email').trim().isEmail().normalizeEmail(),
-    body('password').isLength({ min: 6 }),
+    body('password').isLength({ min: 8 }),
     body('preferredLang').optional().isIn(['English', 'Hindi', 'Tamil', 'Telugu', 'Kannada', 'Bengali', 'Marathi']),
   ],
   validateRequest,
@@ -121,6 +189,7 @@ app.post(
 
 app.post(
   '/api/auth/login',
+  authLimiter,
   [
     body('email').trim().isEmail().normalizeEmail(),
     body('password').notEmpty(),
@@ -141,6 +210,8 @@ app.patch(
   validateRequest,
   updateMe
 );
+
+app.post('/api/auth/logout', protect, logout);
 
 // ============================================
 // MODULE ROUTES
@@ -169,20 +240,54 @@ app.delete('/api/topics/:id', protect, adminOnly, deleteTopic);
 // SUBMISSION ROUTES
 // ============================================
 
-app.post('/api/submissions', protect, submitCodeHandler);
-app.get('/api/submissions', protect, getSubmissions);
+app.post('/api/submissions', protect, createSubmission);
 app.get('/api/submissions/:id', protect, getSubmissionById);
-app.get('/api/submissions/:id/poll', protect, pollSubmission);
+app.get('/api/submissions/user/:userId', protect, getUserSubmissions);
+
+app.post('/api/execute', protect, executionLimiter, execute);
+app.get('/api/execute/:id', protect, getResult);
+
+// ============================================
+// PROJECT GENERATION ROUTES
+// ============================================
+
+// Project Bank routes
+app.get('/api/projects/bank', protect, getAllBankProjects);
+app.get('/api/projects/bank/:index', protect, getProjectByIndex);
+app.get('/api/projects/topic/:topicSlug', protect, getProjectByTopic);
+app.post('/api/projects/unlock', protect, unlockProject);
+app.put('/api/projects/milestone', protect, completeMilestone);
+app.put('/api/projects/complete', protect, completeProject);
+app.get('/api/projects/progress', protect, getProjectProgress);
+
+// ============================================
+// SARVAM TUTOR ROUTES
+// ============================================
+
+app.post('/api/sarvam/explain', protect, aiLimiter, explain);
+
+// Prayog Mentor — 7 action endpoints
+app.post('/api/sarvam/mentor/explain', protect, aiLimiter, mentorExplain);
+app.post('/api/sarvam/mentor/approach', protect, aiLimiter, mentorApproach);
+app.post('/api/sarvam/mentor/complexity', protect, aiLimiter, mentorComplexity);
+app.post('/api/sarvam/mentor/hint', protect, aiLimiter, mentorHint);
+app.post('/api/sarvam/mentor/debug', protect, aiLimiter, mentorDebug);
+app.post('/api/sarvam/mentor/review', protect, aiLimiter, mentorReview);
+app.post('/api/sarvam/mentor/viva', protect, aiLimiter, mentorViva);
+
+// TTS
+app.post('/api/sarvam/tts', protect, aiLimiter, textToSpeech);
 
 // ============================================
 // VIVA ROUTES
 // ============================================
 
-app.post('/api/viva/start', protect, startVivaSession);
-app.post('/api/viva/:id/answer', protect, submitAnswer);
-app.patch('/api/viva/:id/complete', protect, completeViva);
+app.post('/api/viva/start', protect, vivaLimiter, startVivaSession);
+app.post('/api/viva/:id/answer', protect, vivaLimiter, submitAnswer);
+app.patch('/api/viva/:id/complete', protect, vivaLimiter, completeViva);
 app.get('/api/viva', protect, getUserVivas);
 app.get('/api/viva/:id', protect, getVivaById);
+app.get('/api/viva/:id/result', protect, getVivaResult);
 
 // ============================================
 // SKILL REPORT ROUTES
@@ -190,9 +295,10 @@ app.get('/api/viva/:id', protect, getVivaById);
 
 app.post('/api/skill-reports', protect, generateReport);
 app.get('/api/skill-reports', protect, getUserReports);
+app.get('/api/skill-reports/verify/:certificateId', verifyReport); // Public — must be before :id
 app.get('/api/skill-reports/:id', protect, getReportById);
-app.get('/api/skill-reports/verify/:certificateId', verifyReport); // Public
 app.get('/api/admin/skill-reports', protect, adminOnly, getAllReports); // Admin only
+app.get('/api/skill-report/:userId', protect, getSkillReport);
 
 // ============================================
 // ERROR HANDLING
@@ -210,11 +316,38 @@ const startServer = async () => {
     // Connect to MongoDB
     await connectDB();
 
-    app.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`📊 API Health: http://localhost:${PORT}/api/health`);
+    const listenOnPort = (port) => new Promise((resolve, reject) => {
+      const server = app.listen(port, () => resolve(server));
+
+      server.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+          resolve(null);
+          return;
+        }
+
+        reject(error);
+      });
     });
+
+    let currentPort = DEFAULT_PORT;
+    let server = null;
+
+    while (!server) {
+      // Move to the next port if the requested one is already occupied.
+      server = await listenOnPort(currentPort);
+
+      if (!server) {
+        currentPort += 1;
+      }
+    }
+
+    if (currentPort !== DEFAULT_PORT) {
+      console.warn(`⚠️ Port ${DEFAULT_PORT} is busy, using ${currentPort} instead.`);
+    }
+
+    console.log(`✅ Server running on port ${currentPort}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📊 API Health: http://localhost:${currentPort}/api/health`);
   } catch (error) {
     console.error(`❌ Server startup failed: ${error.message}`);
     process.exit(1);

@@ -108,16 +108,22 @@ export const validateAnswer = asyncHandler(async (req, res) => {
   });
 });
 
+const TOPIC_ALLOWED = ['module', 'title', 'slug', 'conceptText', 'difficulty', 'xpReward', 'estimatedMinutes', 'validationQuiz', 'projectTemplate', 'order', 'isPublished'];
+
 // @desc   Create a topic (Admin)
 // @route  POST /api/topics
 // @access Private/Admin
 export const createTopic = asyncHandler(async (req, res) => {
-  const topic = await Topic.create(req.body);
+  const filtered = {};
+  for (const key of TOPIC_ALLOWED) {
+    if (req.body[key] !== undefined) filtered[key] = req.body[key];
+  }
+  const topic = await Topic.create(filtered);
 
   // Push topic ref into parent module
-  if (req.body.module) {
+  if (filtered.module) {
     const { Module } = await import('../models/Module.js');
-    await Module.findByIdAndUpdate(req.body.module, {
+    await Module.findByIdAndUpdate(filtered.module, {
       $push: { topics: topic._id },
       $inc: { totalLessons: 1 },
     });
@@ -130,7 +136,11 @@ export const createTopic = asyncHandler(async (req, res) => {
 // @route  PUT /api/topics/:id
 // @access Private/Admin
 export const updateTopic = asyncHandler(async (req, res) => {
-  const topic = await Topic.findByIdAndUpdate(req.params.id, req.body, {
+  const filtered = {};
+  for (const key of TOPIC_ALLOWED) {
+    if (req.body[key] !== undefined) filtered[key] = req.body[key];
+  }
+  const topic = await Topic.findByIdAndUpdate(req.params.id, filtered, {
     new: true,
     runValidators: true,
   });

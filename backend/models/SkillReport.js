@@ -1,45 +1,53 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
-/**
- * models/SkillReport.js
- *
- * The verified digital credential issued to a student after completing
- * a full learning flow: Sarvam Explanation → Concept Validation → 
- * Project Build → Judge0 Execution → Viva Voce.
- *
- * Fields:
- *  - user            : Student the report belongs to
- *  - topic           : The topic this report certifies
- *  - submission      : The accepted code submission
- *  - viva            : The passed viva session
- *  - overallScore    : Composite score across all stages (0–100)
- *  - breakdown       : Per-stage score details
- *  - certificateId   : Unique verifiable public ID
- *  - languageUsed    : The native language the student learned in
- *  - isVerified      : True once all criteria are met
- *  - issuedAt        : Timestamp of certificate issuance
- */
+const breakdownSchema = new mongoose.Schema(
+  {
+    conceptValidation: { type: Number, default: 0, min: 0, max: 100 },
+    codeExecution: { type: Number, default: 0, min: 0, max: 100 },
+    vivaScore: { type: Number, default: 0, min: 0, max: 100 },
+  },
+  { _id: false }
+);
+
+const topicMasterySchema = new mongoose.Schema(
+  {
+    topicId: { type: mongoose.Schema.Types.ObjectId, ref: 'Topic' },
+    topicTitle: { type: String, default: '' },
+    difficulty: { type: String, default: 'EASY' },
+    score: { type: Number, default: 0, min: 0, max: 100 },
+    submissionsCount: { type: Number, default: 0 },
+    bestSubmissionScore: { type: Number, default: 0 },
+    vivaScore: { type: Number, default: 0 },
+    isCompleted: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const skillReportSchema = new mongoose.Schema(
   {
-    user: {
+    userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
     },
-    topic: {
+    topicId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Topic',
-      required: true,
     },
-    submission: {
+    submissionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Submission',
-      required: true,
     },
-    viva: {
+    vivaSessionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Viva',
-      required: true,
+      default: null,
+    },
+    reportType: {
+      type: String,
+      enum: ['per_topic', 'comprehensive'],
+      default: 'comprehensive',
     },
     overallScore: {
       type: Number,
@@ -47,15 +55,29 @@ const skillReportSchema = new mongoose.Schema(
       min: 0,
       max: 100,
     },
+    readinessScore: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
     breakdown: {
-      conceptValidation: { type: Number, default: 0 }, // Quiz score (0–100)
-      codeExecution: { type: Number, default: 0 },     // Judge0 test score (0–100)
-      vivaScore: { type: Number, default: 0 },         // Gemini viva score (0–100)
+      type: breakdownSchema,
+      default: () => ({}),
+    },
+    topicMastery: [topicMasterySchema],
+    strengths: {
+      type: [String],
+      default: [],
+    },
+    weaknesses: {
+      type: [String],
+      default: [],
     },
     certificateId: {
       type: String,
       unique: true,
-      required: true,
+      sparse: true,
     },
     languageUsed: {
       type: String,
@@ -73,17 +95,33 @@ const skillReportSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compute overall score as weighted average before saving
+skillReportSchema.index({ userId: 1, topicId: 1 }, { unique: true, sparse: true });
+skillReportSchema.index({ userId: 1, reportType: 1 });
+skillReportSchema.index({ isVerified: 1, issuedAt: -1 });
+
 skillReportSchema.pre('save', function (next) {
-  const { conceptValidation, codeExecution, vivaScore } = this.breakdown;
-  // Weights: Quiz 20%, Code 40%, Viva 40%
-  this.overallScore = Math.round(
-    conceptValidation * 0.2 + codeExecution * 0.4 + vivaScore * 0.4
-  );
+  if (this.breakdown) {
+    const { conceptValidation, codeExecution, vivaScore } = this.breakdown;
+    this.overallScore = Math.round(
+      conceptValidation * 0.2 + codeExecution * 0.4 + vivaScore * 0.4
+    );
+  }
+
+  if (!this.readinessScore) {
+    this.readinessScore = this.overallScore;
+  }
+
+  if (!this.certificateId && this.overallScore >= 60) {
+    const prefix = 'PRS';
+    const rand = crypto.randomBytes(12).toString('hex').toUpperCase();
+    this.certificateId = `${prefix}-${rand.slice(0, 8)}-${rand.slice(8, 16)}-${rand.slice(16, 24)}`;
+  }
+
   if (this.overallScore >= 60 && !this.issuedAt) {
     this.isVerified = true;
     this.issuedAt = new Date();
   }
+
   next();
 });
 

@@ -2,19 +2,22 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import generateToken from '../utils/generateToken.js';
 import User from '../models/User.js';
+import { addToBlacklist } from '../utils/tokenBlacklist.js';
 
-/**
- * controllers/authController.js
- *
- * register → Creates a new user account, returns JWT
- * login    → Validates credentials, returns JWT
- * getMe    → Returns the authenticated user's profile
- * updateMe → Updates name, preferredLang; password change requires current password
- */
+const sanitizeUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  preferredLang: user.preferredLang,
+  xp: user.xp,
+  lastActive: user.lastActive,
+  unlockedTopics: user.unlockedTopics,
+  completedTopics: user.completedTopics,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+});
 
-// @desc   Register new user
-// @route  POST /api/auth/register
-// @access Public
 export const register = asyncHandler(async (req, res) => {
   const { name, email, password, preferredLang } = req.body;
 
@@ -24,28 +27,16 @@ export const register = asyncHandler(async (req, res) => {
   }
 
   const user = await User.create({ name, email, password, preferredLang });
-  const token = generateToken(user._id);
 
   return successResponse(res, 201, 'Account created successfully.', {
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      preferredLang: user.preferredLang,
-      xp: user.xp,
-      role: user.role,
-    },
+    token: generateToken(user._id),
+    user: sanitizeUser(user),
   });
 });
 
-// @desc   Login user
-// @route  POST /api/auth/login
-// @access Public
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  // Explicitly select password since it is set to select: false in schema
   const user = await User.findOne({ email }).select('+password');
   if (!user) {
     return errorResponse(res, 401, 'Invalid email or password.');
@@ -56,44 +47,45 @@ export const login = asyncHandler(async (req, res) => {
     return errorResponse(res, 401, 'Invalid email or password.');
   }
 
-  const token = generateToken(user._id);
+  user.lastActive = new Date();
+  await user.save({ validateBeforeSave: false });
 
   return successResponse(res, 200, 'Login successful.', {
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      preferredLang: user.preferredLang,
-      xp: user.xp,
-      role: user.role,
-    },
+    token: generateToken(user._id),
+    user: sanitizeUser(user),
   });
 });
 
-// @desc   Get current logged-in user's profile
-// @route  GET /api/auth/me
-// @access Private
 export const getMe = asyncHandler(async (req, res) => {
-  // req.user is populated by the protect middleware
   const user = await User.findById(req.user._id)
     .populate('unlockedTopics', 'title slug difficulty')
     .populate('completedTopics', 'title slug difficulty');
 
-  return successResponse(res, 200, 'User profile retrieved.', { user });
+  return successResponse(res, 200, 'User profile retrieved.', { user: sanitizeUser(user) });
 });
 
-// @desc   Update user profile (name, language)
-// @route  PATCH /api/auth/me
-// @access Private
 export const updateMe = asyncHandler(async (req, res) => {
-  const { name, preferredLang } = req.body;
+  const updates = {};
+  if (req.body.name !== undefined) updates.name = req.body.name;
+  if (req.body.preferredLang !== undefined) updates.preferredLang = req.body.preferredLang;
 
-  const updatedUser = await User.findByIdAndUpdate(
-    req.user._id,
-    { ...(name && { name }), ...(preferredLang && { preferredLang }) },
-    { new: true, runValidators: true }
-  );
+  if (Object.keys(updates).length === 0) {
+    return errorResponse(res, 400, 'No valid fields provided to update.');
+  }
 
-  return successResponse(res, 200, 'Profile updated.', { user: updatedUser });
+  const user = await User.findByIdAndUpdate(req.user._id, updates, {
+    new: true,
+    runValidators: true,
+  });
+
+  return successResponse(res, 200, 'Profile updated.', { user: sanitizeUser(user) });
+});
+
+export const logout = asyncHandler(async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    addToBlacklist(token);
+  }
+  return successResponse(res, 200, 'Logged out successfully.');
 });
